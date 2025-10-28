@@ -27,12 +27,12 @@ require("./config/mongo");
 require("./config/mysql");
 
 // Routes
-const authRoutes = require("./routes/authRoutes");
+// const authRoutes = require("./routes/authRoutes");
 const userRoutes = require("./routes/userRoutes");
 const walletRoutes = require("./routes/walletRoutes");
 
 // Use Routes
-app.use("/api/auth", authRoutes);
+// app.use("/api/auth", authRoutes);
 app.use("/api/user", userRoutes);
 app.use("/api/wallet", walletRoutes);
 
