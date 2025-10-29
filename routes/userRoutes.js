@@ -1,16 +1,17 @@
 // routes/userRoutes.js
 
-const express = require('express');
+const express = require("express");
 const router = express.Router();
-const User = require('../models/User');
-const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
-const db = require('../config/mysql'); // ✅ MySQL connection import
+const User = require("../models/User");
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
+const db = require("../config/mysql"); // ✅ MySQL connection import
+const nodemailer = require("nodemailer"); // ✅ Nodemailer import
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
 // ✅ Send OTP
-router.post('/send-otp', async (req, res) => {
+router.post("/send-otp", async (req, res) => {
   const { email } = req.body;
   if (!email) return res.status(400).json({ message: "Email is required" });
 
@@ -35,24 +36,56 @@ router.post('/send-otp', async (req, res) => {
       if (err) console.error("MySQL OTP save error:", err);
     });
 
-    console.log(`📧 OTP for ${email}: ${otp}`);
+    // ✅ Gmail transporter setup
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: "tumharaemail@gmail.com", // 👈 apna Gmail yahan likho
+        pass: "your_app_password_here", // 👈 Gmail App Password (16-digit)
+      },
+    });
+
+    // ✅ Email content
+    const mailOptions = {
+      from: '"Digital Pay" <tumharaemail@gmail.com>',
+      to: email,
+      subject: "Your OTP for Digital Pay Verification",
+      html: `
+        <div style="font-family:sans-serif;padding:10px;">
+          <h2>Digital Pay Verification</h2>
+          <p>Hi 👋, your OTP code is:</p>
+          <h1 style="color:#007bff">${otp}</h1>
+          <p>This OTP will expire in <b>5 minutes</b>.</p>
+          <hr/>
+          <p style="font-size:12px;color:#777;">If you didn’t request this, you can safely ignore this email.</p>
+        </div>
+      `,
+    };
+
+    await transporter.sendMail(mailOptions);
+    console.log(`📧 OTP sent successfully to ${email}`);
+
     res.json({ message: "OTP sent successfully to email" });
   } catch (err) {
+    console.error("OTP Send Error:", err);
     res.status(500).json({ message: "Server error", error: err.message });
   }
 });
 
 // ✅ Verify OTP
-router.post('/verify-otp', async (req, res) => {
+router.post("/verify-otp", async (req, res) => {
   const { email, otp } = req.body;
-  if (!email || !otp) return res.status(400).json({ message: "Email and OTP are required" });
+  if (!email || !otp)
+    return res.status(400).json({ message: "Email and OTP are required" });
 
   try {
     const user = await User.findOne({ email });
     if (!user) return res.status(404).json({ message: "User not found" });
 
-    if (String(user.otp) !== String(otp)) return res.status(400).json({ message: "Invalid OTP" });
-    if (user.otpExpiry < new Date()) return res.status(400).json({ message: "OTP expired" });
+    if (String(user.otp) !== String(otp))
+      return res.status(400).json({ message: "Invalid OTP" });
+    if (user.otpExpiry < new Date())
+      return res.status(400).json({ message: "OTP expired" });
 
     user.isVerified = true;
     user.otp = null;
@@ -72,7 +105,7 @@ router.post('/verify-otp', async (req, res) => {
 });
 
 // ✅ Register (Mongo + MySQL both)
-router.post('/register', async (req, res) => {
+router.post("/register", async (req, res) => {
   const { name, email, mobile, password } = req.body;
   if (!name || !email || !mobile || !password)
     return res.status(400).json({ message: "All fields are required" });
@@ -97,9 +130,12 @@ router.post('/register', async (req, res) => {
       VALUES (?, ?, ?, ?, 1, 0)
       ON DUPLICATE KEY UPDATE name=?, mobile=?, password=?, isVerified=1;
     `;
-    db.query(query, [name, email, mobile, hashedPassword, name, mobile, hashedPassword], (err) => {
-      if (err) console.error("MySQL register error:", err);
-    });
+    db.query(
+      [name, email, mobile, hashedPassword, name, mobile, hashedPassword],
+      (err) => {
+        if (err) console.error("MySQL register error:", err);
+      }
+    );
 
     res.json({ message: "User registered successfully in both MongoDB & MySQL" });
   } catch (err) {
@@ -107,8 +143,8 @@ router.post('/register', async (req, res) => {
   }
 });
 
-// ✅ Login (only MongoDB check, but can sync with MySQL)
-router.post('/login', async (req, res) => {
+// ✅ Login (only MongoDB check)
+router.post("/login", async (req, res) => {
   const { email, password } = req.body;
 
   try {
@@ -116,9 +152,14 @@ router.post('/login', async (req, res) => {
     if (!user) return res.status(404).json({ message: "User not found" });
 
     const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) return res.status(401).json({ message: "Invalid credentials" });
+    if (!isMatch)
+      return res.status(401).json({ message: "Invalid credentials" });
 
-    const token = jwt.sign({ id: user._id, email: user.email }, JWT_SECRET, { expiresIn: '2h' });
+    const token = jwt.sign(
+      { id: user._id, email: user.email },
+      JWT_SECRET,
+      { expiresIn: "2h" }
+    );
     res.json({ message: "Login successful", token });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -126,7 +167,7 @@ router.post('/login', async (req, res) => {
 });
 
 // ✅ Add Money
-router.post('/add-money', async (req, res) => {
+router.post("/add-money", async (req, res) => {
   const { email, amount } = req.body;
   if (!email || !amount)
     return res.status(400).json({ message: "email and amount are required" });
@@ -137,10 +178,10 @@ router.post('/add-money', async (req, res) => {
 
     user.walletBalance += Number(amount);
     user.transactions.push({
-      type: 'credit',
+      type: "credit",
       amount,
       details: `Added money to wallet`,
-      timestamp: new Date()
+      timestamp: new Date(),
     });
     await user.save();
 
@@ -159,10 +200,12 @@ router.post('/add-money', async (req, res) => {
 });
 
 // ✅ Recharge
-router.post('/recharge', async (req, res) => {
+router.post("/recharge", async (req, res) => {
   const { email, mobile, amount } = req.body;
   if (!email || !mobile || !amount)
-    return res.status(400).json({ message: "email, mobile, and amount are required" });
+    return res
+      .status(400)
+      .json({ message: "email, mobile, and amount are required" });
 
   try {
     const user = await User.findOne({ email });
@@ -172,10 +215,10 @@ router.post('/recharge', async (req, res) => {
 
     user.walletBalance -= Number(amount);
     user.transactions.push({
-      type: 'debit',
+      type: "debit",
       amount,
       details: `Recharge done to mobile ${mobile}`,
-      timestamp: new Date()
+      timestamp: new Date(),
     });
     await user.save();
 
@@ -190,7 +233,7 @@ router.post('/recharge', async (req, res) => {
     res.json({
       message: "Recharge successful",
       rechargedTo: mobile,
-      remainingBalance: user.walletBalance
+      remainingBalance: user.walletBalance,
     });
   } catch (err) {
     res.status(500).json({ message: "Server error", error: err.message });
@@ -198,15 +241,15 @@ router.post('/recharge', async (req, res) => {
 });
 
 // ✅ Transaction History
-router.get('/transactions/:email', async (req, res) => {
+router.get("/transactions/:email", async (req, res) => {
   const { email } = req.params;
   try {
     const user = await User.findOne({ email });
-    if (!user) return res.status(404).json({ message: 'User not found' });
+    if (!user) return res.status(404).json({ message: "User not found" });
 
     res.json({ transactions: user.transactions });
   } catch (err) {
-    res.status(500).json({ message: 'Server error', error: err.message });
+    res.status(500).json({ message: "Server error", error: err.message });
   }
 });
 
